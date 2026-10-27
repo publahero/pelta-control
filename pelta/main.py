@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt, QTimer, QSize, QObject, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QFont, QAction
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
- QLabel, QPushButton, QSlider, QSystemTrayIcon, QMenu, QCheckBox, QTabWidget, QProgressBar, QComboBox, QLineEdit, QMessageBox)
+ QLabel, QPushButton, QSlider, QSystemTrayIcon, QMenu, QCheckBox, QTabWidget, QProgressBar, QComboBox, QLineEdit, QMessageBox, QColorDialog)
 
 APP_ID='io.github.peltacontrol.PeltaControl'
 
@@ -264,6 +264,15 @@ class Window(QMainWindow):
         self.slider=QSlider(Qt.Orientation.Horizontal);self.slider.setRange(0,100);self.slider.setEnabled(False);self.slider.valueChanged.connect(self.set_volume);lay.addWidget(self.slider)
         btnrow=QHBoxLayout();self.off=QPushButton('LED pois');self.on=QPushButton('LED päälle');btnrow.addWidget(self.off);btnrow.addWidget(self.on);lay.addLayout(btnrow)
         self.off.clicked.connect(lambda:self.led('off'));self.on.clicked.connect(lambda:self.led('on'))
+        self.led_color='#8000ff'
+        colorrow=QHBoxLayout()
+        self.color_button=QPushButton('Valitse LED-väri')
+        self.color_button.clicked.connect(self.pick_led_color)
+        colorrow.addWidget(self.color_button)
+        self.color_preview=QLabel(self.led_color.upper())
+        colorrow.addWidget(self.color_preview)
+        lay.addLayout(colorrow)
+        self.set_color_preview()
         self.status=QLabel('USB HID -ohjaus tarkistetaan…');self.status.setWordWrap(True);self.status.setStyleSheet('color:#9aaec5');lay.addWidget(self.status)
         self.autostart=QCheckBox('Käynnistä kirjautuessa');self.autostart.setChecked(self.has_autostart());self.autostart.toggled.connect(self.set_autostart);lay.addWidget(self.autostart)
         lay.addStretch()
@@ -288,7 +297,7 @@ class Window(QMainWindow):
         try:self.repo_field.setText(json.loads((CONFIG_DIR/'update.json').read_text()).get('repo',''))
         except (OSError,ValueError):pass
         if not self.repo_field.text().strip():self.repo_field.setText('publahero/pelta-control')
-        self.update_status=QLabel('Versio 0.5.1 – määritä GitHub-repository.');self.update_status.setWordWrap(True);ul.addWidget(self.update_status)
+        self.update_status=QLabel('Versio 0.5.2 – määritä GitHub-repository.');self.update_status.setWordWrap(True);ul.addWidget(self.update_status)
         self.check_button=QPushButton('Tarkista päivitykset');self.check_button.clicked.connect(self.check_updates);ul.addWidget(self.check_button)
         self.update_button=QPushButton('Lataa ja ota päivitys käyttöön');self.update_button.setEnabled(False);self.update_button.clicked.connect(self.download_update);ul.addWidget(self.update_button)
         self.update_note=QLabel('Päivitys asentuu käyttäjäkohtaiseen ~/.local/share/pelta-control -kansioon ja tulee käyttöön seuraavalla käynnistyksellä. Julkaisu edellyttää vastaavaa .sha256-tiedostoa.');self.update_note.setWordWrap(True);ul.addWidget(self.update_note)
@@ -436,12 +445,21 @@ class Window(QMainWindow):
         if result.returncode != 0:
             self.voltext.setText('Äänenvoimakkuuden säätö epäonnistui: '+result.stderr[:90]);return
         self.voltext.setText(f'Äänenvoimakkuus: {n}%')
+    def set_color_preview(self):
+        self.color_preview.setText(self.led_color.upper())
+        self.color_preview.setStyleSheet('color:'+self.led_color+';font-weight:bold')
+    def pick_led_color(self):
+        chosen=QColorDialog.getColor(QColor(self.led_color),self,'Valitse kuulokkeiden LED-väri')
+        if not chosen.isValid():return
+        self.led_color=chosen.name()
+        self.set_color_preview()
+        self.led('on')
     def led(self,mode):
         cmd=pelta_cli()
         if not cmd:self.status.setText('LED ei käytettävissä: pelta-control CLI puuttuu.');return
         # Only a fixed pair of supported user-requested commands; no guessed raw HID writes.
         try:
-            args=[cmd,'light','off'] if mode=='off' else [cmd,'light','static','--color','8000ff','--brightness','100']
+            args=[cmd,'light','off'] if mode=='off' else [cmd,'light','static','--color',self.led_color.lstrip('#'),'--brightness','100']
             p=subprocess.run(args,capture_output=True,text=True,timeout=8)
             self.status.setText(('LED-komento lähetetty: '+('pois' if mode=='off' else 'päällä')) if p.returncode==0 else 'LED-komento epäonnistui: '+(p.stderr.strip()[:170] or str(p.returncode)))
         except Exception as e:self.status.setText('LED-virhe: '+str(e))
