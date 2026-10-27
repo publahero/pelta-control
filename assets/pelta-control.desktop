@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Pelta Control
+Exec=PeltaControl
+Icon=pelta-control
+Type=Application
+Categories=Audio;Utility;
+Terminal=false
+StartupNotify=true

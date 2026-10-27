@@ -1,0 +1,2 @@
+# Permit active seat user access to ASUS ROG Pelta control interface (dongle / cable).
+KERNEL=="hidraw*", ATTRS{idVendor}=="0b05", ATTRS{idProduct}=="1b84|1b82", TAG+="uaccess"
