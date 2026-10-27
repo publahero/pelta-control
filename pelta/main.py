@@ -167,7 +167,7 @@ def tray_icon(level):
     return QIcon(img)
 
 # Public GitHub release updater. Downloads a new version to an owned path.
-VERSION = '0.5'
+VERSION = '0.5.1'
 CONFIG_DIR = Path.home()/'.config/pelta-control'
 APP_HOME = Path.home()/'.local/share/pelta-control'
 TARGET = APP_HOME/'Pelta-Control.AppImage'
@@ -186,6 +186,11 @@ def github_json(repo):
 def valid_repo(s):
     return re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+',s or '') is not None
 
+def version_parts(value):
+    # Compare 0.5 and 0.5.0 as equivalent versions.
+    segments=[int(x) for x in value.split('.')]
+    return tuple((segments+[0,0,0])[:3])
+
 def asset_url(release, name):
     for a in release.get('assets', []):
         if a.get('name') == name and a.get('browser_download_url','').startswith('https://'):
@@ -201,9 +206,23 @@ def fetch_bytes(url,limit):
 def prepare_update(repo,version, release):
     name=f'Pelta-Control-{version}-x86_64.AppImage'
     url=asset_url(release,name)
+    if not url:raise RuntimeError('Julkaisusta puuttuu AppImage: '+name)
     checksum_url=asset_url(release,name+'.sha256')
-    if not url or not checksum_url:raise RuntimeError('Julkaisusta puuttuu AppImage tai sen .sha256-tarkistussumma')
-    expected=fetch_bytes(checksum_url,4096).decode('ascii').strip().split()[0].lower()
+    manifest_url=asset_url(release,'SHA256SUMS')
+    if checksum_url:
+        expected=fetch_bytes(checksum_url,4096).decode('ascii').strip().split()[0].lower()
+    elif manifest_url:
+        manifest=fetch_bytes(manifest_url,65536).decode('utf-8')
+        matches=[]
+        for line in manifest.splitlines():
+            parts=line.strip().split(maxsplit=1)
+            if len(parts)!=2:continue
+            digest,filename=parts
+            if filename.lstrip('*').strip()==name:matches.append(digest.lower())
+        if len(matches)!=1:raise ValueError('SHA256SUMS ei sisällä yksiselitteistä AppImagen tarkistussummaa')
+        expected=matches[0]
+    else:
+        raise RuntimeError('Julkaisusta puuttuu AppImagen .sha256 tai SHA256SUMS')
     if not re.fullmatch(r'[0-9a-f]{64}',expected):raise ValueError('Tarkistussummatiedosto ei kelpaa')
     data=fetch_bytes(url,400*1024*1024)
     if hashlib.sha256(data).hexdigest()!=expected:raise ValueError('SHA256-tarkistus epäonnistui')
@@ -229,7 +248,7 @@ def install_managed_copy(src):
 class Window(QMainWindow):
     def __init__(self, app):
         super().__init__();self.app=app
-        self.setWindowTitle('Pelta Control 0.5');self.resize(430,360)
+        self.setWindowTitle('Pelta Control 0.5.1');self.resize(430,360)
         self.setStyleSheet('QWidget{background:#121826;color:#f1f5f9;font-size:14px} QPushButton{background:#26354a;border:1px solid #3b506b;border-radius:9px;padding:10px} QPushButton:hover{background:#354762} QSlider::groove:horizontal{height:6px;background:#39475a;border-radius:3px} QSlider::handle:horizontal{background:#50b7fb;width:16px;margin:-6px 0;border-radius:8px}')
         self.meter=MicrophoneMeter();self.source=None;self.mic_poll=QTimer(self);self.mic_poll.timeout.connect(self.update_meter)
         tabs=QTabWidget();self.setCentralWidget(tabs);self.resize(510,475)
@@ -261,10 +280,11 @@ class Window(QMainWindow):
         updates=QWidget();tabs.addTab(updates,'Päivitykset');ul=QVBoxLayout(updates)
         ul.addWidget(QLabel('GitHub Releases -päivitykset'))
         ul.addWidget(QLabel('Julkaisijan GitHub-tunnus ja repository (esim. kayttaja/pelta-control):'))
-        self.repo_field=QLineEdit();self.repo_field.setPlaceholderText('kayttaja/pelta-control');ul.addWidget(self.repo_field)
+        self.repo_field=QLineEdit();self.repo_field.setPlaceholderText('publahero/pelta-control');ul.addWidget(self.repo_field)
         try:self.repo_field.setText(json.loads((CONFIG_DIR/'update.json').read_text()).get('repo',''))
         except (OSError,ValueError):pass
-        self.update_status=QLabel('Versio 0.5 – määritä GitHub-repository.');self.update_status.setWordWrap(True);ul.addWidget(self.update_status)
+        if not self.repo_field.text().strip():self.repo_field.setText('publahero/pelta-control')
+        self.update_status=QLabel('Versio 0.5.1 – määritä GitHub-repository.');self.update_status.setWordWrap(True);ul.addWidget(self.update_status)
         self.check_button=QPushButton('Tarkista päivitykset');self.check_button.clicked.connect(self.check_updates);ul.addWidget(self.check_button)
         self.update_button=QPushButton('Lataa ja ota päivitys käyttöön');self.update_button.setEnabled(False);self.update_button.clicked.connect(self.download_update);ul.addWidget(self.update_button)
         self.update_note=QLabel('Päivitys asentuu käyttäjäkohtaiseen ~/.local/share/pelta-control -kansioon ja tulee käyttöön seuraavalla käynnistyksellä. Julkaisu edellyttää vastaavaa .sha256-tiedostoa.');self.update_note.setWordWrap(True);ul.addWidget(self.update_note)
@@ -310,9 +330,10 @@ class Window(QMainWindow):
             if not re.fullmatch(r'\d+\.\d+(?:\.\d+)?',tag):
                 self.update_status.setText('Uusimman julkaisun versionumero ei kelpaa');return
             self.release=data;self.release_version=tag
-            from itertools import zip_longest
-            cur=tuple(map(int,VERSION.split('.')));new=tuple(map(int,tag.split('.')))
-            if new <= cur:self.update_status.setText('Uusin julkaisu: '+tag+' – olet ajan tasalla.');return
+            cur=version_parts(VERSION);new=version_parts(tag)
+            if new <= cur:
+                self.update_button.setEnabled(False)
+                self.update_status.setText('Uusin julkaisu: '+tag+' – olet ajan tasalla.');return
             self.update_status.setText('Uusi versio '+tag+' saatavilla!')
             self.update_button.setEnabled(True)
             self.tray.showMessage('Pelta Control','Uusi versio '+tag+' saatavilla',QSystemTrayIcon.MessageIcon.Information,5000)
