@@ -37,9 +37,9 @@ if [ ! -f appimagetool.AppImage ]; then
  curl -fL --retry 3 -o appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
 fi
 chmod +x appimagetool.AppImage
-ARCH=x86_64 ./appimagetool.AppImage --appimage-extract-and-run "$APPDIR" "$PWD/Pelta-Control-0.5.1-x86_64.AppImage"
-echo "Valmis: $PWD/Pelta-Control-0.5.1-x86_64.AppImage"
+ARCH=x86_64 ./appimagetool.AppImage --appimage-extract-and-run "$APPDIR" "$PWD/Pelta-Control-0.5.2-x86_64.AppImage"
+echo "Valmis: $PWD/Pelta-Control-0.5.2-x86_64.AppImage"
 
 # Generate the same checksum manifest that the in-app updater accepts.
-(cd "$PWD" && sha256sum Pelta-Control-0.5.1-x86_64.AppImage > SHA256SUMS)
+(cd "$PWD" && sha256sum Pelta-Control-0.5.2-x86_64.AppImage > SHA256SUMS)
 echo "SHA256SUMS luotu."
