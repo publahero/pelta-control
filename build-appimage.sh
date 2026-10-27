@@ -3,10 +3,14 @@ set -euo pipefail
 cd "$(dirname "$0")"
 for c in python curl git; do command -v "$c" >/dev/null || { echo "Puuttuva ohjelma: $c"; exit 1; }; done
 # Use upstream's established real-device HID implementation (not guessed writes).
-if [ ! -f vendor/upstream/pelta/cli.py ]; then
+HID_COMMIT="5c690c1ea1bea18cc557da4df4bcb773a1b71086"
+if [ ! -d vendor/upstream/.git ]; then
   mkdir -p vendor
-  git clone --depth=1 https://github.com/OthrineTM/pelta-control vendor/upstream
+  git clone https://github.com/OthrineTM/pelta-control vendor/upstream
 fi
+git -C vendor/upstream fetch origin "$HID_COMMIT"
+git -C vendor/upstream checkout --detach "$HID_COMMIT"
+test "$(git -C vendor/upstream rev-parse HEAD)" = "$HID_COMMIT" || { echo "HID-versio ei täsmää"; exit 1; }
 python -m venv .venv
 . .venv/bin/activate
 python -m pip install --upgrade pip
@@ -33,5 +37,9 @@ if [ ! -f appimagetool.AppImage ]; then
  curl -fL --retry 3 -o appimagetool.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
 fi
 chmod +x appimagetool.AppImage
-ARCH=x86_64 ./appimagetool.AppImage --appimage-extract-and-run "$APPDIR" "$PWD/Pelta-Control-0.5-x86_64.AppImage"
-echo "Valmis: $PWD/Pelta-Control-0.5-x86_64.AppImage"
+ARCH=x86_64 ./appimagetool.AppImage --appimage-extract-and-run "$APPDIR" "$PWD/Pelta-Control-0.5.1-x86_64.AppImage"
+echo "Valmis: $PWD/Pelta-Control-0.5.1-x86_64.AppImage"
+
+# Generate the same checksum manifest that the in-app updater accepts.
+(cd "$PWD" && sha256sum Pelta-Control-0.5.1-x86_64.AppImage > SHA256SUMS)
+echo "SHA256SUMS luotu."
