@@ -1,6 +1,7 @@
 import os, sys, re, shutil, subprocess, math, struct, time, select, json, hashlib, threading, urllib.request, urllib.error, tempfile
 from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, QSize, QObject, Signal
+from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtGui import QIcon, QPixmap, QPainter, QColor, QPen, QFont, QAction
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
  QLabel, QPushButton, QSlider, QSystemTrayIcon, QMenu, QCheckBox, QTabWidget, QProgressBar, QComboBox, QLineEdit, QMessageBox)
@@ -167,12 +168,14 @@ def tray_icon(level):
     return QIcon(img)
 
 # Public GitHub release updater. Downloads a new version to an owned path.
-VERSION = '0.5.1'
+VERSION = '0.5.2'
 CONFIG_DIR = Path.home()/'.config/pelta-control'
 APP_HOME = Path.home()/'.local/share/pelta-control'
 TARGET = APP_HOME/'Pelta-Control.AppImage'
 LAUNCHER = Path.home()/'.local/bin/pelta-control'
-DESKTOP = Path.home()/'.local/share/applications/pelta-control-updates.desktop'
+DESKTOP = Path.home()/'.local/share/applications/pelta-control.desktop'
+OLD_DESKTOP = Path.home()/'.local/share/applications/pelta-control-updates.desktop'
+SINGLE_INSTANCE_NAME = 'io.github.peltacontrol.PeltaControl-' + str(os.getuid())
 
 class UpdateSignals(QObject):
     done = Signal(object)
@@ -243,12 +246,13 @@ def install_managed_copy(src):
     os.replace(tmp,TARGET)
     LAUNCHER.write_text('#!/bin/sh\nexec "'+str(TARGET)+'" "$@"\n')
     LAUNCHER.chmod(0o755)
-    DESKTOP.write_text('[Desktop Entry]\nType=Application\nName=Pelta Control (päivittyvä)\nExec='+str(LAUNCHER)+'\nIcon=audio-headphones\nCategories=AudioVideo;Audio;\nTerminal=false\n')
+    DESKTOP.write_text('[Desktop Entry]\nType=Application\nName=Pelta Control\nComment=ASUS ROG Pelta Wireless Headset Manager\nExec='+str(LAUNCHER)+'\nIcon=audio-headphones\nCategories=Utility;\nTerminal=false\nStartupNotify=true\n')
+    OLD_DESKTOP.unlink(missing_ok=True)
 
 class Window(QMainWindow):
     def __init__(self, app):
         super().__init__();self.app=app
-        self.setWindowTitle('Pelta Control 0.5.1');self.resize(430,360)
+        self.setWindowTitle('Pelta Control 0.5.2');self.resize(430,360)
         self.setStyleSheet('QWidget{background:#121826;color:#f1f5f9;font-size:14px} QPushButton{background:#26354a;border:1px solid #3b506b;border-radius:9px;padding:10px} QPushButton:hover{background:#354762} QSlider::groove:horizontal{height:6px;background:#39475a;border-radius:3px} QSlider::handle:horizontal{background:#50b7fb;width:16px;margin:-6px 0;border-radius:8px}')
         self.meter=MicrophoneMeter();self.source=None;self.mic_poll=QTimer(self);self.mic_poll.timeout.connect(self.update_meter)
         tabs=QTabWidget();self.setCentralWidget(tabs);self.resize(510,475)
@@ -351,7 +355,7 @@ class Window(QMainWindow):
                     raise RuntimeError('Nykyisen AppImagen sijainti ei ole tiedossa. Käynnistä AppImage-tiedostosta.')
                 install_managed_copy(staged)
                 if self.autostart.isChecked():self.set_autostart(True)
-                self.update_status.setText('Asennettu versio '+str(self.release_version)+'. Sulje ohjelma ja käynnistä valikosta ”Pelta Control (päivittyvä)”.')
+                self.update_status.setText('Asennettu versio '+str(self.release_version)+'. Sulje ohjelma ja käynnistä valikosta ”Pelta Control”.')
             except Exception as e:self.update_status.setText('Asennus epäonnistui: '+str(e))
             finally:Path(staged).unlink(missing_ok=True)
     def download_update(self):
@@ -462,7 +466,39 @@ class Window(QMainWindow):
 
 def main():
     app=QApplication(sys.argv);app.setQuitOnLastWindowClosed(False)
+    client=QLocalSocket()
+    client.connectToServer(SINGLE_INSTANCE_NAME)
+    if client.waitForConnected(350):
+        client.write(b'show')
+        client.flush()
+        client.waitForBytesWritten(350)
+        client.disconnectFromServer()
+        return 0
+    client.abort()
+    server=QLocalServer(app)
+    if not server.listen(SINGLE_INSTANCE_NAME):
+        probe=QLocalSocket()
+        probe.connectToServer(SINGLE_INSTANCE_NAME)
+        if probe.waitForConnected(350):
+            probe.write(b'show')
+            probe.flush()
+            probe.waitForBytesWritten(350)
+            probe.disconnectFromServer()
+            return 0
+        probe.abort()
+        QLocalServer.removeServer(SINGLE_INSTANCE_NAME)
+        if not server.listen(SINGLE_INSTANCE_NAME):
+            raise RuntimeError('Pelta Controlin yhden instanssin lukitus epäonnistui')
     w=Window(app)
+    def activate_existing():
+        while server.hasPendingConnections():
+            peer=server.nextPendingConnection()
+            peer.readyRead.connect(lambda p=peer: (p.readAll(), w.show_normal(), p.disconnectFromServer()))
+            if peer.bytesAvailable():
+                peer.readAll()
+                w.show_normal()
+                peer.disconnectFromServer()
+    server.newConnection.connect(activate_existing)
     if '--tray' not in sys.argv:w.show()
     return app.exec()
 if __name__=='__main__':sys.exit(main())
