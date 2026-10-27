@@ -168,7 +168,7 @@ def tray_icon(level):
     return QIcon(img)
 
 # Public GitHub release updater. Downloads a new version to an owned path.
-VERSION = '0.5.2'
+VERSION = '0.5.3'
 CONFIG_DIR = Path.home()/'.config/pelta-control'
 APP_HOME = Path.home()/'.local/share/pelta-control'
 TARGET = APP_HOME/'Pelta-Control.AppImage'
@@ -252,7 +252,7 @@ def install_managed_copy(src):
 class Window(QMainWindow):
     def __init__(self, app):
         super().__init__();self.app=app
-        self.setWindowTitle('Pelta Control 0.5.2');self.resize(430,360)
+        self.setWindowTitle('Pelta Control 0.5.3');self.resize(430,360)
         self.setStyleSheet('QWidget{background:#121826;color:#f1f5f9;font-size:14px} QPushButton{background:#26354a;border:1px solid #3b506b;border-radius:9px;padding:10px} QPushButton:hover{background:#354762} QSlider::groove:horizontal{height:6px;background:#39475a;border-radius:3px} QSlider::handle:horizontal{background:#50b7fb;width:16px;margin:-6px 0;border-radius:8px}')
         self.meter=MicrophoneMeter();self.source=None;self.mic_poll=QTimer(self);self.mic_poll.timeout.connect(self.update_meter)
         tabs=QTabWidget();self.setCentralWidget(tabs);self.resize(510,475)
@@ -297,7 +297,7 @@ class Window(QMainWindow):
         try:self.repo_field.setText(json.loads((CONFIG_DIR/'update.json').read_text()).get('repo',''))
         except (OSError,ValueError):pass
         if not self.repo_field.text().strip():self.repo_field.setText('publahero/pelta-control')
-        self.update_status=QLabel('Versio 0.5.2 – määritä GitHub-repository.');self.update_status.setWordWrap(True);ul.addWidget(self.update_status)
+        self.update_status=QLabel('Versio 0.5.3 – määritä GitHub-repository.');self.update_status.setWordWrap(True);ul.addWidget(self.update_status)
         self.check_button=QPushButton('Tarkista päivitykset');self.check_button.clicked.connect(self.check_updates);ul.addWidget(self.check_button)
         self.update_button=QPushButton('Lataa ja ota päivitys käyttöön');self.update_button.setEnabled(False);self.update_button.clicked.connect(self.download_update);ul.addWidget(self.update_button)
         self.update_note=QLabel('Päivitys asentuu käyttäjäkohtaiseen ~/.local/share/pelta-control -kansioon ja tulee käyttöön seuraavalla käynnistyksellä. Julkaisu edellyttää vastaavaa .sha256-tiedostoa.');self.update_note.setWordWrap(True);ul.addWidget(self.update_note)
@@ -363,7 +363,7 @@ class Window(QMainWindow):
                 else:
                     raise RuntimeError('Nykyisen AppImagen sijainti ei ole tiedossa. Käynnistä AppImage-tiedostosta.')
                 install_managed_copy(staged)
-                if self.autostart.isChecked():self.set_autostart(True)
+                if self.has_autostart():self.set_autostart(True)
                 self.update_status.setText('Asennettu versio '+str(self.release_version)+'. Sulje ohjelma ja käynnistä valikosta ”Pelta Control”.')
             except Exception as e:self.update_status.setText('Asennus epäonnistui: '+str(e))
             finally:Path(staged).unlink(missing_ok=True)
@@ -477,9 +477,8 @@ class Window(QMainWindow):
         dest=self.desktop_file()
         if enabled:
             dest.parent.mkdir(parents=True,exist_ok=True)
-            # AppImage environment supplies APPIMAGE path on launch.
-            executable=str(LAUNCHER) if LAUNCHER.exists() else (os.environ.get('APPIMAGE') or os.path.abspath(sys.argv[0]))
-            dest.write_text('[Desktop Entry]\nType=Application\nName=Pelta Control\nExec="'+executable.replace('"','\\"')+'" --tray\nIcon=audio-headphones\nTerminal=false\nX-KDE-autostart-after=panel\n')
+            # The stable, managed launcher survives AppImage updates.
+            dest.write_text('[Desktop Entry]\\nType=Application\\nName=Pelta Control\\nExec='+str(LAUNCHER)+' --tray\\nIcon=audio-headphones\\nTerminal=false\\nX-KDE-autostart-after=panel\\n')
         else:dest.unlink(missing_ok=True)
 
 def main():
